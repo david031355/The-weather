@@ -1,0 +1,941 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>מזג אוויר בזמן אמת</title>
+  <meta name="theme-color" content="#0f172a">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='30' fill='%23fbbf24'/><path d='M50 10 v10 M50 80 v10 M10 50 h10 M80 50 h10 M22 22 l7 7 M71 71 l7 7 M22 78 l7-7 M71 29 l7-7' stroke='%23fbbf24' stroke-width='6' stroke-linecap='round'/></svg>">
+  <style>
+    :root {
+      --bg-gradient-day: linear-gradient(180deg, #1e3a8a 0%, #0284c7 60%, #38bdf8 100%);
+      --bg-gradient-night: linear-gradient(180deg, #090d16 0%, #0f172a 50%, #1e1b4b 100%);
+      --bg-gradient-rain: linear-gradient(180deg, #1e293b 0%, #334155 50%, #475569 100%);
+      --glass-bg: rgba(255, 255, 255, 0.12);
+      --glass-border: rgba(255, 255, 255, 0.2);
+      --glass-card: rgba(15, 23, 42, 0.45);
+      --text-main: #f8fafc;
+      --text-muted: #cbd5e1;
+      --accent: #38bdf8;
+      --font: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+
+    body {
+      font-family: var(--font);
+      background: var(--bg-gradient-day);
+      min-height: 100vh;
+      color: var(--text-main);
+      display: flex;
+      justify-content: center;
+      align-items: stretch;
+      transition: background 0.8s ease;
+      overflow-x: hidden;
+    }
+
+    #app {
+      width: 100%;
+      max-width: 480px;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      padding: env(safe-area-inset-top, 16px) 16px env(safe-area-inset-bottom, 20px) 16px;
+      backdrop-filter: blur(20px);
+      box-shadow: 0 0 40px rgba(0, 0, 0, 0.3);
+    }
+
+    /* Top Navigation / Search */
+    header {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      margin-top: 10px;
+      margin-bottom: 16px;
+      position: relative;
+      z-index: 50;
+    }
+
+    .search-box {
+      flex: 1;
+      position: relative;
+    }
+
+    .search-input {
+      width: 100%;
+      background: var(--glass-bg);
+      border: 1px solid var(--glass-border);
+      border-radius: 20px;
+      padding: 10px 16px 10px 38px;
+      color: #fff;
+      font-size: 15px;
+      font-family: var(--font);
+      outline: none;
+      backdrop-filter: blur(10px);
+      transition: all 0.2s ease;
+    }
+
+    .search-input:focus {
+      background: rgba(255, 255, 255, 0.22);
+      border-color: rgba(255, 255, 255, 0.5);
+    }
+
+    .search-icon-btn {
+      position: absolute;
+      left: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .icon-btn {
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      background: var(--glass-bg);
+      border: 1px solid var(--glass-border);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: transform 0.15s ease, background 0.2s ease;
+    }
+
+    .icon-btn:active {
+      transform: scale(0.92);
+      background: rgba(255, 255, 255, 0.25);
+    }
+
+    /* Autocomplete dropdown */
+    .autocomplete-list {
+      position: absolute;
+      top: calc(100% + 6px);
+      right: 0;
+      left: 0;
+      background: #0f172a;
+      border: 1px solid var(--glass-border);
+      border-radius: 16px;
+      max-height: 240px;
+      overflow-y: auto;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+      z-index: 100;
+      display: none;
+    }
+
+    .autocomplete-item {
+      padding: 12px 16px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 14px;
+    }
+
+    .autocomplete-item:hover, .autocomplete-item:active {
+      background: rgba(56, 189, 248, 0.2);
+    }
+
+    /* Hero Weather Section */
+    .current-hero {
+      text-align: center;
+      padding: 20px 10px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .city-name {
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .update-time {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+
+    .weather-visual {
+      width: 110px;
+      height: 110px;
+      margin: 8px 0;
+      filter: drop-shadow(0 10px 15px rgba(0,0,0,0.25));
+      animation: float 4s ease-in-out infinite;
+    }
+
+    @keyframes float {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-8px); }
+    }
+
+    .temp-big {
+      font-size: 72px;
+      font-weight: 300;
+      line-height: 1;
+      margin-left: -10px;
+      letter-spacing: -2px;
+    }
+
+    .condition-desc {
+      font-size: 18px;
+      font-weight: 500;
+      color: #f1f5f9;
+      margin-top: 4px;
+    }
+
+    .hi-lo {
+      font-size: 14px;
+      color: var(--text-muted);
+      margin-top: 4px;
+      display: flex;
+      gap: 12px;
+    }
+
+    /* Cards & Containers */
+    .glass-card {
+      background: var(--glass-card);
+      border: 1px solid var(--glass-border);
+      border-radius: 20px;
+      padding: 16px;
+      margin-bottom: 16px;
+      backdrop-filter: blur(12px);
+    }
+
+    .section-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    /* Hourly Forecast Scroller */
+    .hourly-scroll {
+      display: flex;
+      gap: 16px;
+      overflow-x: auto;
+      padding-bottom: 8px;
+      scrollbar-width: none;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .hourly-scroll::-webkit-scrollbar {
+      display: none;
+    }
+
+    .hourly-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      min-width: 54px;
+      font-size: 13px;
+    }
+
+    .hourly-item .h-time {
+      color: var(--text-muted);
+      font-size: 12px;
+    }
+
+    .hourly-item .h-icon {
+      width: 32px;
+      height: 32px;
+    }
+
+    .hourly-item .h-temp {
+      font-weight: 600;
+      font-size: 14px;
+    }
+
+    /* Daily Forecast */
+    .daily-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .daily-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 14px;
+    }
+
+    .daily-day {
+      width: 70px;
+      font-weight: 500;
+    }
+
+    .daily-icon {
+      width: 28px;
+      height: 28px;
+    }
+
+    .daily-range {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 140px;
+      justify-content: flex-end;
+    }
+
+    .temp-bar-bg {
+      flex: 1;
+      height: 5px;
+      background: rgba(255, 255, 255, 0.15);
+      border-radius: 99px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .temp-bar-fill {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      background: linear-gradient(90deg, #38bdf8, #f59e0b);
+      border-radius: 99px;
+    }
+
+    /* Grid Metrics */
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .metric-card {
+      background: var(--glass-card);
+      border: 1px solid var(--glass-border);
+      border-radius: 18px;
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      backdrop-filter: blur(12px);
+    }
+
+    .metric-header {
+      font-size: 12px;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .metric-val {
+      font-size: 22px;
+      font-weight: 600;
+      letter-spacing: -0.5px;
+    }
+
+    .metric-sub {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    /* Install APK / PWA Banner */
+    .install-banner {
+      background: linear-gradient(135deg, rgba(56, 189, 248, 0.25), rgba(129, 140, 248, 0.25));
+      border: 1px solid rgba(56, 189, 248, 0.4);
+      border-radius: 20px;
+      padding: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 20px;
+      cursor: pointer;
+      backdrop-filter: blur(10px);
+      transition: transform 0.15s ease;
+    }
+
+    .install-banner:active {
+      transform: scale(0.98);
+    }
+
+    .install-btn {
+      background: #38bdf8;
+      color: #0f172a;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-weight: 700;
+      font-size: 13px;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+
+    /* Modal */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(8px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      z-index: 200;
+    }
+
+    .modal-sheet {
+      background: #0f172a;
+      border: 1px solid var(--glass-border);
+      border-radius: 24px;
+      max-width: 440px;
+      width: 100%;
+      padding: 24px;
+      color: #fff;
+      position: relative;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+    }
+
+    .modal-close {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      background: rgba(255,255,255,0.1);
+      border: none;
+      color: #fff;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal-title {
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 12px;
+      color: #38bdf8;
+    }
+
+    .modal-step {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 16px;
+      align-items: flex-start;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .modal-num {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: #0284c7;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: bold;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+
+    .apk-guide-box {
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 12px;
+      padding: 12px;
+      font-size: 13px;
+      margin-top: 14px;
+      color: var(--text-muted);
+    }
+
+    /* Loading Spinner */
+    .loader {
+      display: none;
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 48px;
+      height: 48px;
+      border: 4px solid rgba(255,255,255,0.2);
+      border-top-color: #38bdf8;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      z-index: 150;
+    }
+
+    @keyframes spin {
+      to { transform: translate(-50%, -50%) rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="loader" id="loader"></div>
+
+  <div id="app">
+    <!-- Top Header -->
+    <header>
+      <div class="search-box">
+        <input type="text" id="cityInput" class="search-input" placeholder="חפש עיר (למשל: בית שמש, ירושלים...)" autocomplete="off">
+        <button class="search-icon-btn" id="searchBtn" title="חיפוש">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        </button>
+        <div class="autocomplete-list" id="autocompleteList"></div>
+      </div>
+      <button class="icon-btn" id="gpsBtn" title="מיקום נוכחי">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polygon points="12 2 15 12 12 22 9 12"></polygon></svg>
+      </button>
+      <button class="icon-btn" id="infoBtn" title="הורדה והתקנה בטלפון">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+      </button>
+    </header>
+
+    <!-- Install Banner -->
+    <div class="install-banner" id="bannerBtn">
+      <div>
+        <div style="font-weight: 700; font-size: 14px;">התקנה בטלפון (APK / PWA)</div>
+        <div style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">לחץ לצפייה בהוראות התקנה ישירה במסך הבית</div>
+      </div>
+      <button class="install-btn">התקן עכשיו</button>
+    </div>
+
+    <!-- Hero Weather -->
+    <main class="current-hero">
+      <div class="city-name" id="displayCity">בית שמש, ישראל</div>
+      <div class="update-time" id="updateTime">מעודכן עכשיו</div>
+      <div class="weather-visual" id="weatherIconContainer">
+        <!-- SVG icon injected here -->
+      </div>
+      <div class="temp-big" id="currentTemp">--°</div>
+      <div class="condition-desc" id="weatherDesc">טוען נתונים...</div>
+      <div class="hi-lo" id="hiLoTemp">
+        <span>מקסימום: --°</span>
+        <span>•</span>
+        <span>מינימום: --°</span>
+      </div>
+    </main>
+
+    <!-- Hourly Forecast -->
+    <section class="glass-card">
+      <div class="section-title">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+        תחזית ל-24 השעות הקרובות
+      </div>
+      <div class="hourly-scroll" id="hourlyList">
+        <!-- Injected dynamically -->
+      </div>
+    </section>
+
+    <!-- 7-Day Forecast -->
+    <section class="glass-card">
+      <div class="section-title">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+        תחזית ל-7 הימים הקרובים
+      </div>
+      <div class="daily-list" id="dailyList">
+        <!-- Injected dynamically -->
+      </div>
+    </section>
+
+    <!-- Metrics Grid -->
+    <section class="metrics-grid">
+      <div class="metric-card">
+        <div class="metric-header">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"></path></svg>
+          לחות
+        </div>
+        <div class="metric-val" id="humidityVal">--%</div>
+        <div class="metric-sub" id="humidityDesc">נקודת טל תקינה</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-header">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9.59 4.59A2 2 0 1 1 11 8H2m10.59 11.41A2 2 0 1 0 14 16H2m15.73-8.27A2.5 2.5 0 1 1 19.5 12H2"></path></svg>
+          רוח
+        </div>
+        <div class="metric-val" id="windVal">-- קמ"ש</div>
+        <div class="metric-sub" id="windDir">משבים קלים</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-header">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+          אינדקס UV
+        </div>
+        <div class="metric-val" id="uvVal">--</div>
+        <div class="metric-sub" id="uvDesc">קרינה בינונית</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-header">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 16.2A4.5 4.5 0 0 0 17.5 8h-1.8A7 7 0 1 0 4 14.9"></path><path d="M16 14v6"></path><path d="M8 14v6"></path><path d="M12 16v6"></path></svg>
+          סיכוי לגשם
+        </div>
+        <div class="metric-val" id="rainVal">--%</div>
+        <div class="metric-sub" id="rainDesc">ללא משקעים כעת</div>
+      </div>
+    </section>
+  </div>
+
+  <!-- Modal for APK / Phone Installation -->
+  <div class="modal-backdrop" id="installModal">
+    <div class="modal-sheet">
+      <button class="modal-close" id="closeModal">✕</button>
+      <div class="modal-title">התקנה בטלפון כ-APK או אפליקציה</div>
+
+      <div class="modal-step">
+        <div class="modal-num">1</div>
+        <div>
+          <strong>התקנה ישירה בלחיצה (WebAPK / PWA):</strong><br>
+          פתח את הקובץ או הקישור בדפדפן כרום (Chrome) בטלפון שלך.
+        </div>
+      </div>
+
+      <div class="modal-step">
+        <div class="modal-num">2</div>
+        <div>
+          <strong>הוספה למסך הבית:</strong><br>
+          לחץ על 3 הנקודות בתפריט הדפדפן ➔ בחר <strong>"הוסף למסך הבית"</strong> (Add to Home screen) או <strong>"התקן אפליקציה"</strong>.
+        </div>
+      </div>
+
+      <div class="modal-step">
+        <div class="modal-num">3</div>
+        <div>
+          <strong>האפליקציה תותקן כאפליקציה מקומית:</strong><br>
+          ייווצר אייקון אפליקציה עצמאי, והיא תיפתח במסך מלא ללא דפדפן, בדיוק כמו APK רגיל.
+        </div>
+      </div>
+
+      <div class="apk-guide-box">
+        <strong>💡 מעוניין בקובץ APK חתום פיזית?</strong><br>
+        העלה את הקובץ לשרת חינמי (כמו Vercel / GitHub Pages) והכנס את הכתובת לאתר <strong>PWABuilder.com</strong> – האתר מייצר בלחיצה אחת חבילת APK רשמית להורדה והתקנה ישירה (Sideloading) באנדרואיד!
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // --- State & Config ---
+    let currentCoords = { lat: 31.747, lon: 34.988, name: "בית שמש, ישראל" };
+
+    const WEATHER_CODES = {
+      0: { text: "בהיר ושמשי", icon: "sun", type: "day" },
+      1: { text: "בהיר ברובו", icon: "sun-cloud", type: "day" },
+      2: { text: "מעונן חלקית", icon: "sun-cloud", type: "day" },
+      3: { text: "מעונן", icon: "cloud", type: "cloud" },
+      45: { text: "ערפילי", icon: "fog", type: "cloud" },
+      48: { text: "ערפל כבד", icon: "fog", type: "cloud" },
+      51: { text: "טפטוף קל", icon: "drizzle", type: "rain" },
+      53: { text: "טפטוף בינוני", icon: "drizzle", type: "rain" },
+      55: { text: "טפטוף עז", icon: "drizzle", type: "rain" },
+      61: { text: "גשם קל", icon: "rain", type: "rain" },
+      63: { text: "גשם בינוני", icon: "rain", type: "rain" },
+      65: { text: "גשם כבד", icon: "rain-heavy", type: "rain" },
+      71: { text: "שלג קל", icon: "snow", type: "snow" },
+      73: { text: "שלג בינוני", icon: "snow", type: "snow" },
+      75: { text: "שלג כבד", icon: "snow", type: "snow" },
+      80: { text: "ממטרים קלים", icon: "rain", type: "rain" },
+      81: { text: "ממטרי גשם", icon: "rain", type: "rain" },
+      82: { text: "ממטרים עזים", icon: "rain-heavy", type: "rain" },
+      95: { text: "סופת רעמים", icon: "thunder", type: "rain" },
+      96: { text: "סופת ברקים וברד", icon: "thunder", type: "rain" }
+    };
+
+    function getSvgIcon(iconName, isNight = false) {
+      if (isNight && (iconName === 'sun' || iconName === 'sun-cloud')) {
+        return `<svg viewBox="0 0 100 100" fill="none"><path d="M50 15 A35 35 0 1 0 85 65 A30 30 0 0 1 50 15 Z" fill="#e2e8f0"/><circle cx="70" cy="25" r="3" fill="#cbd5e1"/><circle cx="80" cy="40" r="2" fill="#cbd5e1"/></svg>`;
+      }
+      switch (iconName) {
+        case 'sun':
+          return `<svg viewBox="0 0 100 100" fill="none">
+            <circle cx="50" cy="50" r="24" fill="#fbbf24"/>
+            <g stroke="#f59e0b" stroke-width="5" stroke-linecap="round">
+              <line x1="50" y1="12" x2="50" y2="20"/>
+              <line x1="50" y1="80" x2="50" y2="88"/>
+              <line x1="12" y1="50" x2="20" y2="50"/>
+              <line x1="80" y1="50" x2="88" y2="50"/>
+              <line x1="23" y1="23" x2="29" y2="29"/>
+              <line x1="71" y1="71" x2="77" y2="77"/>
+              <line x1="23" y1="77" x2="29" y2="71"/>
+              <line x1="71" y1="29" x2="77" y2="23"/>
+            </g>
+          </svg>`;
+        case 'sun-cloud':
+          return `<svg viewBox="0 0 100 100" fill="none">
+            <circle cx="38" cy="38" r="18" fill="#fbbf24"/>
+            <path d="M35 70 h36 a18 18 0 0 0 0 -36 a15 15 0 0 0 -22 -6 a20 20 0 0 0 -20 22 a12 12 0 0 0 6 20 Z" fill="#e2e8f0" opacity="0.95"/>
+          </svg>`;
+        case 'cloud':
+        case 'fog':
+          return `<svg viewBox="0 0 100 100" fill="none">
+            <path d="M30 72 h42 a18 18 0 0 0 0 -36 a16 16 0 0 0 -24 -8 a22 22 0 0 0 -24 24 a14 14 0 0 0 6 20 Z" fill="#cbd5e1"/>
+          </svg>`;
+        case 'rain':
+        case 'drizzle':
+          return `<svg viewBox="0 0 100 100" fill="none">
+            <path d="M30 60 h42 a18 18 0 0 0 0 -36 a16 16 0 0 0 -24 -8 a22 22 0 0 0 -24 24 a14 14 0 0 0 6 20 Z" fill="#94a3b8"/>
+            <g stroke="#38bdf8" stroke-width="4" stroke-linecap="round">
+              <line x1="38" y1="70" x2="32" y2="82"/>
+              <line x1="52" y1="70" x2="46" y2="82"/>
+              <line x1="66" y1="70" x2="60" y2="82"/>
+            </g>
+          </svg>`;
+        case 'rain-heavy':
+        case 'thunder':
+          return `<svg viewBox="0 0 100 100" fill="none">
+            <path d="M30 55 h42 a18 18 0 0 0 0 -36 a16 16 0 0 0 -24 -8 a22 22 0 0 0 -24 24 a14 14 0 0 0 6 20 Z" fill="#64748b"/>
+            <polygon points="52 58 42 74 50 74 46 88 60 70 52 70" fill="#facc15"/>
+          </svg>`;
+        case 'snow':
+          return `<svg viewBox="0 0 100 100" fill="none">
+            <path d="M30 60 h42 a18 18 0 0 0 0 -36 a16 16 0 0 0 -24 -8 a22 22 0 0 0 -24 24 a14 14 0 0 0 6 20 Z" fill="#cbd5e1"/>
+            <circle cx="38" cy="74" r="3" fill="#ffffff"/>
+            <circle cx="52" cy="78" r="3" fill="#ffffff"/>
+            <circle cx="66" cy="74" r="3" fill="#ffffff"/>
+          </svg>`;
+        default:
+          return `<svg viewBox="0 0 100 100" fill="none"><circle cx="50" cy="50" r="22" fill="#fbbf24"/></svg>`;
+      }
+    }
+
+    const loader = document.getElementById('loader');
+    function showLoading() { loader.style.display = 'block'; }
+    function hideLoading() { loader.style.display = 'none'; }
+
+    // --- Weather Fetching via Open-Meteo ---
+    async function loadWeatherData(lat, lon, cityName) {
+      showLoading();
+      try {
+        const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,wind_speed_10m&hourly=temperature_2m,weather_code,is_day&daily=weather_code,temperature_2m_max,temperature_2m_min,uv_index_max,precipitation_probability_max&timezone=auto&forecast_days=7`;
+        
+        const res = await fetch(url);
+        if (!res.ok) throw new Error("API error");
+        const data = await res.json();
+        
+        renderWeather(data, cityName);
+      } catch (err) {
+        console.error("Failed to load weather:", err);
+        alert("לא ניתן לטעון נתוני מזג אוויר ברגע זה. בדוק חיבור לרשת.");
+      } finally {
+        hideLoading();
+      }
+    }
+
+    function renderWeather(data, cityName) {
+      const current = data.current;
+      const daily = data.daily;
+      const hourly = data.hourly;
+      const isDay = current.is_day === 1;
+
+      // Update Header
+      document.getElementById('displayCity').innerText = cityName;
+      const now = new Date();
+      document.getElementById('updateTime').innerText = `עודכן לאחרונה ב-${now.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}`;
+
+      // Current Conditions
+      const wCode = current.weather_code;
+      const wInfo = WEATHER_CODES[wCode] || { text: "נאה", icon: "sun", type: "day" };
+      
+      document.getElementById('currentTemp').innerText = `${Math.round(current.temperature_2m)}°`;
+      document.getElementById('weatherDesc').innerText = wInfo.text;
+      document.getElementById('weatherIconContainer').innerHTML = getSvgIcon(wInfo.icon, !isDay);
+
+      // Max / Min
+      const maxToday = Math.round(daily.temperature_2m_max[0]);
+      const minToday = Math.round(daily.temperature_2m_min[0]);
+      document.getElementById('hiLoTemp').innerHTML = `<span>מקסימום: ${maxToday}°</span> <span>•</span> <span>מינימום: ${minToday}°</span>`;
+
+      // Background theme
+      if (!isDay) {
+        document.body.style.background = 'var(--bg-gradient-night)';
+      } else if (wInfo.type === 'rain') {
+        document.body.style.background = 'var(--bg-gradient-rain)';
+      } else {
+        document.body.style.background = 'var(--bg-gradient-day)';
+      }
+
+      // Metrics
+      document.getElementById('humidityVal').innerText = `${current.relative_humidity_2m}%`;
+      document.getElementById('windVal').innerText = `${Math.round(current.wind_speed_10m)} קמ"ש`;
+      
+      const uv = daily.uv_index_max[0] || 0;
+      document.getElementById('uvVal').innerText = uv.toFixed(1);
+      document.getElementById('uvDesc').innerText = uv > 6 ? "קרינה חזקה, מומלץ צל" : uv > 3 ? "קרינה מתונה" : "קרינה נמוכה";
+
+      const rainProb = daily.precipitation_probability_max[0] || 0;
+      document.getElementById('rainVal').innerText = `${rainProb}%`;
+      document.getElementById('rainDesc').innerText = rainProb > 40 ? "מומלץ לקחת מטריה" : "סיכוי נמוך לגשם";
+
+      // Hourly List
+      const hourlyContainer = document.getElementById('hourlyList');
+      hourlyContainer.innerHTML = '';
+      
+      const currentHourIndex = hourly.time.findIndex(t => new Date(t).getHours() === now.getHours());
+      const startIdx = currentHourIndex >= 0 ? currentHourIndex : 0;
+      
+      for (let i = startIdx; i < Math.min(startIdx + 24, hourly.time.length); i++) {
+        const itemDate = new Date(hourly.time[i]);
+        const hourLabel = i === startIdx ? "עכשיו" : `${itemDate.getHours()}:00`;
+        const itemCode = hourly.weather_code[i];
+        const itemDay = hourly.is_day[i] === 1;
+        const iconName = (WEATHER_CODES[itemCode] || { icon: "sun" }).icon;
+
+        const el = document.createElement('div');
+        el.className = 'hourly-item';
+        el.innerHTML = `
+          <span class="h-time">${hourLabel}</span>
+          <div class="h-icon">${getSvgIcon(iconName, !itemDay)}</div>
+          <span class="h-temp">${Math.round(hourly.temperature_2m[i])}°</span>
+        `;
+        hourlyContainer.appendChild(el);
+      }
+
+      // Daily List (7 Days)
+      const dailyContainer = document.getElementById('dailyList');
+      dailyContainer.innerHTML = '';
+
+      const dayNames = ['יום א׳', 'יום ב׳', 'יום ג׳', 'יום ד׳', 'יום ה׳', 'יום ו׳', 'שבת'];
+      const allMax = Math.max(...daily.temperature_2m_max);
+      const allMin = Math.min(...daily.temperature_2m_min);
+      const span = Math.max(allMax - allMin, 1);
+
+      for (let d = 0; d < daily.time.length; d++) {
+        const dateObj = new Date(daily.time[d]);
+        const dayName = d === 0 ? "היום" : dayNames[dateObj.getDay()];
+        const code = daily.weather_code[d];
+        const iconName = (WEATHER_CODES[code] || { icon: "sun" }).icon;
+        const dMin = Math.round(daily.temperature_2m_min[d]);
+        const dMax = Math.round(daily.temperature_2m_max[d]);
+
+        const leftPct = ((dMin - allMin) / span) * 100;
+        const widthPct = Math.max(((dMax - dMin) / span) * 100, 10);
+
+        const row = document.createElement('div');
+        row.className = 'daily-row';
+        row.innerHTML = `
+          <div class="daily-day">${dayName}</div>
+          <div class="daily-icon">${getSvgIcon(iconName)}</div>
+          <div class="daily-range">
+            <span>${dMin}°</span>
+            <div class="temp-bar-bg">
+              <div class="temp-bar-fill" style="left: ${leftPct}%; width: ${widthPct}%;"></div>
+            </div>
+            <span>${dMax}°</span>
+          </div>
+        `;
+        dailyContainer.appendChild(row);
+      }
+    }
+
+    // --- Search & Geocoding ---
+    const cityInput = document.getElementById('cityInput');
+    const autoList = document.getElementById('autocompleteList');
+    let debounceTimer;
+
+    cityInput.addEventListener('input', () => {
+      clearTimeout(debounceTimer);
+      const query = cityInput.value.trim();
+      if (query.length < 2) {
+        autoList.style.display = 'none';
+        return;
+      }
+      debounceTimer = setTimeout(() => searchCities(query), 300);
+    });
+
+    async function searchCities(query) {
+      try {
+        const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(query)}&count=5&language=he&format=json`;
+        const res = await fetch(url);
+        const data = await res.json();
+        
+        if (!data.results || data.results.length === 0) {
+          autoList.style.display = 'none';
+          return;
+        }
+
+        autoList.innerHTML = '';
+        data.results.forEach(item => {
+          const div = document.createElement('div');
+          div.className = 'autocomplete-item';
+          const country = item.country || '';
+          const name = item.name;
+          div.innerHTML = `<span><strong>${name}</strong></span><span style="color:#94a3b8; font-size:12px;">${country}</span>`;
+          div.onclick = () => {
+            autoList.style.display = 'none';
+            cityInput.value = '';
+            currentCoords = { lat: item.latitude, lon: item.longitude, name: `${name}, ${country}` };
+            loadWeatherData(item.latitude, item.longitude, currentCoords.name);
+          };
+          autoList.appendChild(div);
+        });
+        autoList.style.display = 'block';
+      } catch (err) {
+        console.error("Geocoding failed:", err);
+      }
+    }
+
+    document.getElementById('searchBtn').onclick = () => {
+      const q = cityInput.value.trim();
+      if (q) searchCities(q);
+    };
+
+    // --- GPS Geolocation ---
+    document.getElementById('gpsBtn').onclick = () => {
+      if (!navigator.geolocation) {
+        alert("דפדפן זה אינו תומך באיתור מיקום.");
+        return;
+      }
+      showLoading();
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const lat = pos.coords.latitude;
+          const lon = pos.coords.longitude;
+          currentCoords = { lat, lon, name: "המיקום הנוכחי שלך" };
+          loadWeatherData(lat, lon, "המיקום הנוכחי שלך");
+        },
+        (err) => {
+          hideLoading();
+          alert("לא ניתן היה לקבל את המיקום הנוכחי. בדוק הרשאות מיקום במכשיר.");
+        }
+      );
+    };
+
+    // --- Modal Controls ---
+    const modal = document.getElementById('installModal');
+    const openModal = () => modal.style.display = 'flex';
+    const closeModal = () => modal.style.display = 'none';
+
+    document.getElementById('infoBtn').onclick = openModal;
+    document.getElementById('bannerBtn').onclick = openModal;
+    document.getElementById('closeModal').onclick = closeModal;
+    modal.onclick = (e) => { if (e.target === modal) closeModal(); };
+
+    // Initial Load - בית שמש
+    loadWeatherData(currentCoords.lat, currentCoords.lon, currentCoords.name);
+  </script>
+</body>
+</html>
